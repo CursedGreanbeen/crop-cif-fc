@@ -119,12 +119,19 @@ def apply_structure_plans(
         if plan.action != "crop":
             raise ValueError(f"Unknown plan action: {plan.action}")
 
-        residues = get_chain_residues(structure, chain.name)
-        keep_indices = set(plan.keep_cif_indices)
+    residues = get_chain_residues(structure, chain.name)
+    keep_indices = set(plan.keep_cif_indices)
 
-        for cif_index, residue in enumerate(residues):
-            if cif_index not in keep_indices:
-                chain.remove_residue(residue.seqid)
+    drop_seqids = {
+        (residue.seqid.num, residue.seqid.icode)
+        for cif_index, residue in enumerate(residues)
+        if cif_index not in keep_indices
+    }
+
+    for i in range(len(chain) - 1, -1, -1):
+        real_residue = chain[i]
+        if (real_residue.seqid.num, real_residue.seqid.icode) in drop_seqids:
+            del chain[i]
 
     return structure
 

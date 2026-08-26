@@ -18,7 +18,7 @@ for cif_path in sorted(CIF_DIR.glob("*.cif")):
         print(f"[{pdb_id}] SKIP: no matching FASTA file")
         continue
 
-    output_cif_path = OUTPUT_DIR / f"{pdb_id}_fv.cif"
+    output_cif_path = OUTPUT_DIR / f"{pdb_id}.cif"
     report_path = REPORT_DIR / f"{pdb_id}_report.tsv"
 
     try:
