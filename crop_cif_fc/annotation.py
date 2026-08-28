@@ -7,11 +7,11 @@ from .anarci_annotator import chain_role, run_anarci
 from .fasta_manager import FastaRecord, read_fasta_file
 
 
-def annotate_record(
-    record: FastaRecord,
-) -> dict[str, Any]:
+def annotate_record(record: FastaRecord) -> dict[str, Any]:
     """Запускает ANARCI для одной FASTA-записи."""
-    chain_type, start, end, status = run_anarci(record.sequence)
+    domains, status = run_anarci(record.sequence)
+
+    chain_type, start, end = domains[0] if domains else (None, None, None)
     role = chain_role(chain_type)
 
     return {
@@ -23,6 +23,7 @@ def annotate_record(
         "start": start,
         "end": end,
         "status": status,
+        "domains": domains,
     }
 
 
@@ -31,9 +32,6 @@ def expand_annotations_by_chain(
 ) -> list[dict[str, Any]]:
     """
     Делает отдельную запись для каждой цепи.
-
-    Это удобно для дальнейшего объединения с chains.py
-    и расчёта контактов.
     """
     expanded: list[dict[str, Any]] = []
 

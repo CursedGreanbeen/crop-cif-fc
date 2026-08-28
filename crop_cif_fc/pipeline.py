@@ -15,6 +15,7 @@ from .models import ChainAnnotation
 from .sequence_mapping import map_fasta_to_cif
 from .crop_planner import plan_structure_crop
 from .report import build_structure_report, write_report
+from .chain_splitter import split_structure_chains
 
 
 def process_structure(
@@ -33,10 +34,18 @@ def process_structure(
     structure = load_structure(cif_path)
     fasta_records: dict[str, FastaRecord] = read_fasta_file(fasta_path)
 
+    split_report, new_chain_annotations, new_chain_mappings = split_structure_chains(
+        structure=structure,
+        fasta_records=fasta_records,
+    )
+    consumed_chain_ids = set(split_report.keys())
+
     annotations = []
     unique_records = list({id(r): r for r in fasta_records.values()}.values())
 
     for record in unique_records:
+        if set(record.chain_ids) & consumed_chain_ids:
+            continue
         annotations.append(annotate_record(record))
 
     expanded_annotations = expand_annotations_by_chain(annotations)
@@ -49,12 +58,18 @@ def process_structure(
         for row in expanded_annotations
     }
 
+    # Merge in annotations for the newly split chains.
+    chain_annotations.update(new_chain_annotations)
+
     chain_mappings = {}
 
     for chain_id in get_protein_chain_ids(structure):
         chain_mappings[chain_id] = []
 
     for chain_id, annotation in chain_annotations.items():
+        if chain_id in new_chain_mappings:
+            continue  # already built by split_structure_chains, trivial 1:1
+
         if annotation.chain_type in {"H", "K", "L"}:
             residues = get_chain_residues(structure, chain_id)
             residue_refs = build_residue_refs(chain_id, residues)
@@ -64,8 +79,9 @@ def process_structure(
                 reference_sequence=fasta_record.sequence,
                 cif_residues=residue_refs,
             )
-
             chain_mappings[chain_id] = mapping
+
+    chain_mappings.update(new_chain_mappings)
 
     plans = plan_structure_crop(
         chain_annotations=chain_annotations,

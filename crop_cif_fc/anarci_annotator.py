@@ -11,29 +11,25 @@ VENV_ACTIVATE = Path("/home/mullagaliamova/envs/anarci-env/bin/activate")
 HMMER_PATH = Path("/usr/bin")
 
 
-def run_anarci(sequence: str) -> tuple[str | None, int | None, int | None, str]:
+def run_anarci(sequence: str) -> tuple[list[tuple[str, int, int]], str]:
     """
     Запускает ANARCI для одной аминокислотной последовательности.
 
     Возвращает:
-        chain_type: тип цепи ANARCI, например H, K или L;
-        start: начало найденного домена;
-        end: конец найденного домена;
+        domains: список найденных доменов (chain_type, start, end),
+                 может быть несколько (например, VH+VL в одной цепи);
         status: статус выполнения.
     """
     sequence = "".join(sequence.split()).upper()
 
     if not sequence:
-        return None, None, None, "EMPTY_SEQUENCE"
+        return [], "EMPTY_SEQUENCE"
 
     temp_file: str | None = None
 
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w",
-            suffix=".fasta",
-            delete=False,
-            encoding="utf-8",
+            mode="w", suffix=".fasta", delete=False, encoding="utf-8",
         ) as file:
             file.write(">temporary_sequence\n")
             file.write(f"{sequence}\n")
@@ -50,17 +46,13 @@ def run_anarci(sequence: str) -> tuple[str | None, int | None, int | None, str]:
         )
 
         result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=60,
+            command, shell=True, capture_output=True, text=True, timeout=60,
         )
 
         output = result.stdout + "\n" + result.stderr
 
         if result.returncode != 0:
-            return None, None, None, f"ERROR: {output.strip()}"
+            return [], f"ERROR: {output.strip()}"
 
         pattern = (
             r"#\|[^|]+\|([^|]+)\|[^|]+\|[^|]+\|"
@@ -70,21 +62,20 @@ def run_anarci(sequence: str) -> tuple[str | None, int | None, int | None, str]:
         matches = list(re.finditer(pattern, output))
 
         if not matches:
-            return None, None, None, "NO_DOMAIN"
+            return [], "NO_DOMAIN"
 
-        match = matches[0]
+        domains = [
+            (match.group(1), int(match.group(2)), int(match.group(3)))
+            for match in matches
+        ]
 
-        chain_type = match.group(1)
-        start = int(match.group(2))
-        end = int(match.group(3))
-
-        return chain_type, start, end, "OK"
+        return domains, "OK"
 
     except subprocess.TimeoutExpired:
-        return None, None, None, "TIMEOUT"
+        return [], "TIMEOUT"
 
     except Exception as error:
-        return None, None, None, f"ERROR: {error}"
+        return [], f"ERROR: {error}"
 
     finally:
         if temp_file is not None:

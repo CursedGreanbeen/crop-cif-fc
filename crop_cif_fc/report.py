@@ -14,6 +14,8 @@ def build_chain_report(
     annotation: ChainAnnotation | None,
     plan: ChainCropPlan,
     mapping: list[dict],
+    split_from: str | None = None,
+    split_flagged: bool = False,
 ) -> dict:
     mapped = [
         item for item in mapping
@@ -59,6 +61,8 @@ def build_chain_report(
         "cif_original_range": cif_original_range,
         "cif_kept_range": cif_kept_range,
         "status": plan.status,
+        "split_from": split_from or "",
+        "split_flagged": split_flagged,
     }
 
 
@@ -67,20 +71,35 @@ def build_structure_report(
     annotations: dict[str, ChainAnnotation],
     plans: dict[str, ChainCropPlan],
     mappings: dict[str, list[dict]],
+    split_report: dict[str, dict] | None = None,
 ) -> list[dict]:
     chain_ids = sorted(set(annotations) | set(plans) | set(mappings))
 
-    return [
-        build_chain_report(
+    # Reverse-lookup: new_chain_id -> (original_chain_id, flagged), built
+    # once from split_report's {original_chain_id: {"new_chain_ids": [...], "flagged": bool, ...}}
+    split_lookup: dict[str, tuple[str, bool]] = {}
+    for original_id, info in (split_report or {}).items():
+        for new_id in info["new_chain_ids"]:
+            split_lookup[new_id] = (original_id, info["flagged"])
+
+    rows = []
+    for chain_id in chain_ids:
+        if chain_id not in plans:
+            continue
+
+        split_from, split_flagged = split_lookup.get(chain_id, (None, False))
+
+        rows.append(build_chain_report(
             pdb_id=pdb_id,
             chain_id=chain_id,
             annotation=annotations.get(chain_id),
             plan=plans[chain_id],
             mapping=mappings.get(chain_id, []),
-        )
-        for chain_id in chain_ids
-        if chain_id in plans
-    ]
+            split_from=split_from,
+            split_flagged=split_flagged,
+        ))
+
+    return rows
 
 
 REPORT_FIELDS = [
@@ -93,6 +112,8 @@ REPORT_FIELDS = [
     "cif_original_range",
     "cif_kept_range",
     "status",
+    "split_from",
+    "split_flagged",
 ]
 
 
