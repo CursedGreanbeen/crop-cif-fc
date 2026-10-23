@@ -22,8 +22,7 @@ def process_structure(
     cif_path: str | Path,
     fasta_path: str | Path,
     output_path: str | Path,
-    report_path: str | Path,
-) -> None:
+) -> list[dict]:
     cif_path = Path(cif_path)
     fasta_path = Path(fasta_path)
     output_path = Path(output_path)
@@ -34,7 +33,7 @@ def process_structure(
     structure = load_structure(cif_path)
     fasta_records: dict[str, FastaRecord] = read_fasta_file(fasta_path)
 
-    split_report, new_chain_annotations, new_chain_mappings = split_structure_chains(
+    split_report, new_chain_annotations, new_chain_mappings, reusable_mappings = split_structure_chains(
         structure=structure,
         fasta_records=fasta_records,
     )
@@ -70,6 +69,10 @@ def process_structure(
         if chain_id in new_chain_mappings:
             continue  # already built by split_structure_chains, trivial 1:1
 
+        if chain_id in reusable_mappings:          # <- already computed during detection, reuse it
+            chain_mappings[chain_id] = reusable_mappings[chain_id]
+            continue
+
         if annotation.chain_type in {"H", "K", "L"}:
             residues = get_chain_residues(structure, chain_id)
             residue_refs = build_residue_refs(chain_id, residues)
@@ -94,15 +97,13 @@ def process_structure(
     apply_structure_plans(structure=structure, plans=plans)
     save_structure(structure=structure, path=output_path)
 
-    write_report(
-        rows=build_structure_report(
-            pdb_id=pdb_id,
-            annotations=chain_annotations,
-            plans=plans,
-            mappings=chain_mappings,
-        ),
-        path=report_path,
-    )
+    print(f"[{pdb_id}] done → {output_path.name}")
 
-    print(f"[{pdb_id}] done → {output_path.name}, {report_path.name}")
+    return build_structure_report(
+        pdb_id=pdb_id,
+        annotations=chain_annotations,
+        plans=plans,
+        mappings=chain_mappings,
+        split_report=split_report,
+    )
    

@@ -117,33 +117,26 @@ REPORT_FIELDS = [
 ]
 
 
-def write_report(
+def format_report_rows(
     rows: list[dict[str, Any]],
-    path: str | Path,
     include_antigen: bool = False,
-) -> None:
-    """Write chain-processing results to a tab-separated report."""
-
-    output_path = Path(path)
-
+) -> list[dict[str, Any]]:
+    """Filter (AG exclusion) and normalize rows to REPORT_FIELDS shape."""
     filtered_rows = [
-        row
-        for row in rows
+        row for row in rows
         if include_antigen or row.get("chain_type") != "AG"
     ]
+    return [
+        {field: row.get(field, "") for field in REPORT_FIELDS}
+        for row in filtered_rows
+    ]
 
+
+def write_report(rows: list[dict[str, Any]], path: str | Path) -> None:
+    """Write already-formatted rows to one tab-separated file"""
+    output_path = Path(path)
     with output_path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(
-            handle,
-            fieldnames=REPORT_FIELDS,
-            delimiter="\t",
-            extrasaction="ignore",
-        )
-
+        writer = csv.DictWriter(handle, fieldnames=REPORT_FIELDS, delimiter="\t", extrasaction="ignore")
         writer.writeheader()
-
-        for row in filtered_rows:
-            writer.writerow({
-                field: row.get(field, "")
-                for field in REPORT_FIELDS
-            })
+        for row in rows:
+            writer.writerow(row)

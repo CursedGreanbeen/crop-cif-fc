@@ -70,9 +70,7 @@ def _detect_from_fasta_reference(chain_id, residue_refs, fasta_records):
     raw_domains, status = run_anarci(record.sequence)
 
     if not raw_domains:
-        # Nothing to split; existing AG/manual_review
-        # handling downstream takes over as before.
-        return [], "matched", status
+        return [], "matched", status, None
 
     refs = build_residue_refs(chain_id, residue_refs)
     mapping, _alignment = map_fasta_to_cif(record.sequence, refs)
@@ -89,7 +87,7 @@ def _detect_from_fasta_reference(chain_id, residue_refs, fasta_records):
             "cif_end": cif_end,
         })
 
-    return domains, "matched", status
+    return domains, "matched", status, mapping
 
 
 def _detect_from_cif_sequence(residue_refs):
@@ -104,14 +102,14 @@ def _detect_from_cif_sequence(residue_refs):
     raw_domains, status = run_anarci(cif_sequence)
 
     if not raw_domains:
-        return [], "orphan", status
+        return [], "orphan", status, None
 
     domains = [
         {"chain_type": chain_type, "cif_start": start, "cif_end": end}
         for chain_type, start, end in raw_domains
     ]
 
-    return domains, "orphan", status
+    return domains, "orphan", status, None
 
 
 def resolve_unclaimed_residues(domains: list[dict]):
@@ -227,32 +225,36 @@ def split_structure_chains(structure, fasta_records):
     split_report = {}
     new_chain_annotations = {}
     new_chain_mappings = {}
+    reusable_mappings = {}  # chain_id -> mapping, for matched chains checked but NOT split
 
     for chain_id in original_chain_ids:
         residue_refs = get_chain_residues(structure, chain_id)
         if not residue_refs:
             continue
 
-        domains, source, status = detect_chain_domains(chain_id, residue_refs, fasta_records)
+        domains, source, status, mapping = detect_chain_domains(chain_id, residue_refs, fasta_records)
+
         if len(domains) < 2:
+            if mapping is not None:
+                reusable_mappings[chain_id] = mapping
             continue
 
         domains, flagged = resolve_unclaimed_residues(domains)
-        new_chain_ids = allocate_new_ids(used_chain_ids, len(domains))
-        split_chain(structure, chain_id, domains, new_chain_ids)
+        new_ids = allocate_new_ids(used_chain_ids, len(domains))
+        split_chain(structure, chain_id, domains, new_ids)
 
-        for new_id, domain in zip(new_chain_ids, domains):
+        for new_id, domain in zip(new_ids, domains):
             new_residues = get_chain_residues(structure, new_id)
-            annotation, mapping = build_split_chain_annotation(domain["chain_type"], new_residues)
+            annotation, ann_mapping = build_split_chain_annotation(domain["chain_type"], new_residues)
             new_chain_annotations[new_id] = annotation
-            new_chain_mappings[new_id] = mapping
+            new_chain_mappings[new_id] = ann_mapping
 
         split_report[chain_id] = {
-            "new_chain_ids": new_chain_ids,
+            "new_chain_ids": new_ids,
             "domain_types": [d["chain_type"] for d in domains],
             "flagged": flagged,
             "source": source,
             "status": status,
         }
 
-    return split_report, new_chain_annotations, new_chain_mappings
+    return split_report, new_chain_annotations, new_chain_mappings, reusable_mappings
